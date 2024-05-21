@@ -1,0 +1,112 @@
+---
+title: "Data Acquisition Code"
+author: "Duy Nguyen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidycensus)
+library(tidyverse)
+library(ggplot2)
+```
+
+## US Census Data
+
+```{r}
+Inc = get_acs(geography = "county",
+              year = 2019, 
+              variables = c(medianinc = "B19013_001"),
+              survey = "acs5",
+              output = "wide",
+              geometry = TRUE)
+
+Inc$GEOID = as.numeric(Inc$GEOID)
+```
+
+## Policymap Data:
+
+```{r}
+USObesity = read.csv("US OBESITY Percent.csv")
+USEdu = read.csv("US Education High School Percent.csv")
+USHealth = read.csv("Doctor Access US Percent.csv")
+USRestaurant = read.csv("US Restaurants Percent.csv")
+```
+
+```{r}
+Final_User = Inc %>% left_join(USObesity, by = c("GEOID" = "GeoID")) %>% left_join(USEdu, by = c("GEOID" = "GeoID")) %>% left_join(USHealth, by = c("GEOID" = "GeoID")) %>% left_join(USRestaurant, by = c("GEOID" = "GeoID")) %>% select(GEOID, NAME, SitsinState.x, p_crd_obesity, medianincE, phsp, pfood_fastfoodtakeout, p_doctor)
+```
+
+## Removing all NAS
+
+```{r}
+Final_User = Final_User %>% filter(phsp != "N/A" & p_crd_obesity != "N/A" & pfood_fastfoodtakeout != "N/A" & p_doctor != "N/A") # Geometry Data cannot be exported as CSV
+# Use geometry for internal usage only or save it as a shape file
+```
+
+#Test
+
+```{r}
+Cali = Final_User %>% filter(SitsinState.x == "CA")
+```
+
+```{r}
+colnames(Final_User) = c("GeoID", "County_State", "State", "P_Obesity", "MedianIncE", "P_HS", "P_FastFood", "P_Doctor", "geometry")
+
+Final_User$P_Obesity = as.numeric(Final_User$P_Obesity)
+Final_User$P_HS = as.numeric(Final_User$P_HS)
+Final_User$P_FastFood = as.numeric(Final_User$P_FastFood)
+Final_User$P_Doctor = as.numeric(Final_User$P_Doctor)
+```
+```{r}
+Final_User = Final_User %>% mutate(Obesity_Prob = ifelse(P_Obesity > median(P_Obesity), "Higher Severity", "Lower Severity"))
+```
+
+```{r, eval = FALSE}
+write.csv(Final_User, "/Users/dnguyen/Desktop/Classes/STA141C/Proj/US Project Data.csv")
+```
+
+```{r}
+test = Final_User %>% filter(State == "CA")
+```
+
+# Visualization Section
+
+```{r}
+Final_Simple = read.csv("US Project Data.csv")
+library(tmap)
+```
+
+```{r}
+ggplot(data = Final_Simple, aes(x = P_Obesity, fill = "red")) + geom_histogram(bins = 30)
+```
+
+```{r}
+ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = MedianIncE, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Obesity Classification on Median Income", y = "Median Income Estimates", x = "Severity Type") + theme(legend.position = "none")
+```
+
+```{r}
+ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = P_HS, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Obesity Classification on Percentage of High School Diploma", y = "", x = "Severity Type") + theme(legend.position = "none")
+
+```
+
+```{r}
+ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = P_Doctor, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Obesity Classification on Percentage Doctor Care", y = "", x = "Severity Type") + theme(legend.position = "none")
+```
+
+```{r}
+ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = P_FastFood, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Obesity Classification on Percentage Takeout & Fastfood Restaurants", y = "", x = "Severity Type") + theme(legend.position = "none")
+```
+
+```{r}
+Final_Filtered = Final_User %>% filter(State != "AK" & State != "HI")
+tm_shape(Final_Filtered) + tm_polygons(col = "P_Obesity", style = "quantile", palette = "Reds", title = "") + tm_layout(
+  main.title = "Percentage of Counties' Population with Obesity (Excluding Alaska & Hawaii)", 
+            main.title.size = 0.9, 
+            main.title.position = "center", 
+            legend.outside = FALSE, 
+            frame = FALSE) + 
+  tm_scale_bar(text.size  = 0.5,  position = c("right", "TOP")) + 
+    tm_compass(type = "4star", position = c("right", "bottom"))
+```
