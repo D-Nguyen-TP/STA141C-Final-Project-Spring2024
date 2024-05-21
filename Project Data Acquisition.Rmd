@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidycensus)
 library(tidyverse)
 library(ggplot2)
+library(flextable)
+library(miscTools)
 ```
 
 ## US Census Data
@@ -109,4 +111,20 @@ tm_shape(Final_Filtered) + tm_polygons(col = "P_Obesity", style = "quantile", pa
             frame = FALSE) + 
   tm_scale_bar(text.size  = 0.5,  position = c("right", "TOP")) + 
     tm_compass(type = "4star", position = c("right", "bottom"))
+```
+
+# Flextable Test
+
+```{r}
+High_Sev = Final_Simple %>% select(-County_State, -State, -GeoID) %>% filter(Obesity_Prob == "Higher Severity")
+
+Low_Sev = Final_Simple %>% select(-County_State, -State, -GeoID) %>% filter(Obesity_Prob == "Lower Severity")
+
+Summary = data.frame(High_Severity = colMedians(High_Sev[, c(-1, -7)]), Low_Severity = colMedians(Low_Sev[, c(-1, -7)])) %>% rownames_to_column()
+
+Summary$rowname = c("Obesity", "Estimated Median Income", "High School Diploma", "Fastfood & Takeout", "Doctor Coverage")
+
+Summary = Summary %>% flextable()
+  
+Summary %>% set_header_labels(rowname = "Data Types", High_Severity = "High Severity", Low_Severity = "Low Severity")
 ```
