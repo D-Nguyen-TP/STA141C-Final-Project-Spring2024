@@ -16,7 +16,7 @@ library(miscTools)
 
 ## US Census Data
 
-```{r}
+```{r, eval = TRUE}
 Inc = get_acs(geography = "county",
               year = 2019, 
               variables = c(medianinc = "B19013_001"),
@@ -29,20 +29,20 @@ Inc$GEOID = as.numeric(Inc$GEOID)
 
 ## Policymap Data:
 
-```{r}
+```{r, eval = TRUE}
 USObesity = read.csv("US OBESITY Percent.csv")
-USEdu = read.csv("US Education High School Percent.csv")
+USEdu = read.csv("US High School Fixed.csv")
 USHealth = read.csv("Doctor Access US Percent.csv")
 USRestaurant = read.csv("US Restaurants Percent.csv")
 ```
 
-```{r}
+```{r, eval = TRUE}
 Final_User = Inc %>% left_join(USObesity, by = c("GEOID" = "GeoID")) %>% left_join(USEdu, by = c("GEOID" = "GeoID")) %>% left_join(USHealth, by = c("GEOID" = "GeoID")) %>% left_join(USRestaurant, by = c("GEOID" = "GeoID")) %>% select(GEOID, NAME, SitsinState.x, p_crd_obesity, medianincE, phsp, pfood_fastfoodtakeout, p_doctor)
 ```
 
 ## Removing all NAS
 
-```{r}
+```{r, eval = TRUE}
 Final_User = Final_User %>% filter(phsp != "N/A" & p_crd_obesity != "N/A" & pfood_fastfoodtakeout != "N/A" & p_doctor != "N/A") # Geometry Data cannot be exported as CSV
 # Use geometry for internal usage only or save it as a shape file
 ```
@@ -53,7 +53,7 @@ Final_User = Final_User %>% filter(phsp != "N/A" & p_crd_obesity != "N/A" & pfoo
 Cali = Final_User %>% filter(SitsinState.x == "CA")
 ```
 
-```{r}
+```{r, eval = TRUE}
 colnames(Final_User) = c("GeoID", "County_State", "State", "P_Obesity", "MedianIncE", "P_HS", "P_FastFood", "P_Doctor", "geometry")
 
 Final_User$P_Obesity = as.numeric(Final_User$P_Obesity)
@@ -116,6 +116,10 @@ tm_shape(Final_Filtered) + tm_polygons(col = "P_Obesity", style = "quantile", pa
 # Flextable Test
 
 ```{r}
+head(Final_Simple) %>% flextable()
+```
+
+```{r}
 High_Sev = Final_Simple %>% select(-County_State, -State, -GeoID) %>% filter(Obesity_Prob == "Higher Severity")
 
 Low_Sev = Final_Simple %>% select(-County_State, -State, -GeoID) %>% filter(Obesity_Prob == "Lower Severity")
@@ -125,6 +129,18 @@ Summary = data.frame(High_Severity = colMedians(High_Sev[, c(-1, -7)]), Low_Seve
 Summary$rowname = c("Obesity", "Estimated Median Income", "High School Diploma", "Fastfood & Takeout", "Doctor Coverage")
 
 Summary = Summary %>% flextable()
-  
+```
+
+```{r}
 Summary %>% set_header_labels(rowname = "Data Types", High_Severity = "High Severity", Low_Severity = "Low Severity")
 ```
+
+
+
+Note:
+
+Census Inc: 2019
+Obesity: 2019 Crude Percentage
+Doctor: 2018 Percentage of Doctor Coverage
+High School: Percentage of High School Diploma Minimum in 2018-2022.
+FastFood: 2019 Percentage
