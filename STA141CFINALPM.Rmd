@@ -1,0 +1,196 @@
+---
+title: "STA141C Final Project"
+author: "Your Name"
+date: "2024-05-25"
+output: html_document
+---
+
+# Introduction
+
+This document presents the analysis and predictive modeling for the STA141C Final Project. The goal is to predict the severity of obesity problems using various machine learning techniques.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Load Libraries
+
+library(dplyr)
+library(readr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(glmnet)
+library(pROC)
+library(ggplot2)
+library(corrplot)
+library(car)
+```
+
+
+```{r load-data}
+# Load the data
+data <- read.csv("US Project Data.csv")
+
+# Remove unnecessary columns
+data <- data %>% select(-c(X, GeoID, County_State, State))
+
+# Convert the target variable to a binary variable
+data$Obesity_Prob <- ifelse(data$Obesity_Prob == "Higher Severity", 1, 0)
+
+# Ensure the target variable is a factor
+data$Obesity_Prob <- as.factor(data$Obesity_Prob)
+
+# Center and scale the features
+preProc <- preProcess(data %>% select(-Obesity_Prob), method = c("center", "scale"))
+data <- predict(preProc, data)
+
+# Split the data into training (60%) and testing (40%)
+set.seed(123)
+trainIndex <- createDataPartition(data$Obesity_Prob, p = .60, 
+                                  list = FALSE, 
+                                  times = 1)
+
+trainData <- data[trainIndex, ]
+testData  <- data[-trainIndex, ]
+
+# Define the features and target
+features <- c("P_Obesity", "MedianIncE", "P_HS", "P_FastFood", "P_Doctor")
+target <- "Obesity_Prob"
+
+# Create matrices for glmnet
+X_train <- as.matrix(trainData[, features])
+y_train <- trainData[, target]
+X_test <- as.matrix(testData[, features])
+y_test <- testData[, target]
+
+
+```
+
+
+```{r}
+# Fit logistic regression model
+model_ridge <- cv.glmnet(X_train, y_train, family = "binomial", alpha = 0)
+
+# Predict on test set
+ridge_pred <- predict(model_ridge, s = "lambda.min", newx = X_test, type = "response")
+ridge_class_pred <- ifelse(ridge_pred > 0.5, 1, 0)
+
+# Ensure that both predicted and actual labels have the same factor levels
+ridge_class_pred <- factor(ridge_class_pred, levels = levels(y_test))
+
+# Evaluate performance with confusion matrix
+conf_matrix_ridge <- confusionMatrix(ridge_class_pred, y_test)
+print(conf_matrix_ridge)
+
+```
+
+```{r}
+# Fit logistic regression model with Lasso (L1) regularization
+lasso_model <- cv.glmnet(X_train, y_train, family = "binomial", alpha = 1)
+
+# Predict on test set
+pred_lasso <- predict(lasso_model, s = "lambda.min", newx = X_test, type = "response")
+lasso_class_pred <- ifelse(pred_lasso > 0.5, 1, 0)
+
+# Ensure that both predicted and actual labels have the same factor levels
+lasso_class_pred <- factor(lasso_class_pred, levels = levels(y_test))
+
+# Evaluate performance with confusion matrix
+conf_matrix_lasso <- confusionMatrix(lasso_class_pred, y_test)
+print(conf_matrix_lasso)
+
+# Plot ROC curve
+roc_curve <- roc(y_test, pred_lasso)
+plot(roc_curve)
+auc(roc_curve)
+```
+```{r}
+# Fit logistic regression model with Elastic Net regularization
+elastic_net_model <- cv.glmnet(X_train, y_train, family = "binomial", alpha = 0.5)
+
+# Predict on test set
+pred_elastic_net <- predict(elastic_net_model, s = "lambda.min", newx = X_test, type = "response")
+elastic_net_class_pred <- ifelse(pred_elastic_net > 0.5, 1, 0)
+
+# Ensure that both predicted and actual labels have the same factor levels
+elastic_net_class_pred <- factor(elastic_net_class_pred, levels = levels(y_test))
+
+# Evaluate performance with confusion matrix
+conf_matrix_elastic_net <- confusionMatrix(elastic_net_class_pred, y_test)
+print(conf_matrix_elastic_net)
+```
+
+
+
+
+```{r}
+# Define control parameters for tuning
+control <- trainControl(method = "cv", number = 10)
+tune_grid <- expand.grid(cp = seq(0.001, 0.1, by = 0.001))
+
+# Tune decision tree model
+set.seed(123)
+model_tree_tuned <- train(y_train ~ ., data = data.frame(x_train, y_train), method = "rpart", tuneGrid = tune_grid, trControl = control)
+
+# Visualize the tuned decision tree
+rpart.plot(model_tree_tuned$finalModel)
+
+# Predict on test set with tuned model
+tree_tuned_pred <- predict(model_tree_tuned, newdata = x_test)
+
+# Ensure that both predicted and actual labels have the same factor levels
+tree_tuned_pred <- factor(tree_tuned_pred, levels = levels(y_test))
+
+# Evaluate performance with confusion matrix
+conf_matrix_tree_tuned <- confusionMatrix(tree_tuned_pred, y_test)
+print(conf_matrix_tree_tuned)
+```
+
+
+```{r}
+# Fit random forest model
+set.seed(123)
+model_rf <- randomForest(y_train ~ ., data = data.frame(x_train, y_train), ntree = 500)
+
+# Predict on test set
+rf_pred <- predict(model_rf, newdata = x_test)
+
+# Ensure that both predicted and actual labels have the same factor levels
+rf_pred <- factor(rf_pred, levels = levels(y_test))
+
+# Evaluate performance with confusion matrix
+conf_matrix_rf <- confusionMatrix(rf_pred, y_test)
+print(conf_matrix_rf)
+
+# Plot variable importance
+varImpPlot(model_rf)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
