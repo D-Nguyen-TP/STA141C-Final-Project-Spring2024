@@ -1,0 +1,83 @@
+---
+title: "MiriamAguirre"
+output: html_document
+date: "2024-05-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+df <- read.csv("US Project Data.csv")
+```
+
+
+```{r}
+par(mfcol=c(3,3))
+hist(df$P_Obesity)
+hist(df$MedianIncE)
+hist(df$P_HS)
+hist(df$P_FastFood)
+hist(df$P_Doctor)
+```
+
+
+
+```{r}
+par(mfcol=c(3,3))
+boxplot(df$P_Obesity)
+boxplot(df$MedianIncE)
+boxplot(df$P_HS)
+boxplot(df$P_FastFood)
+boxplot(df$P_Doctor)
+```
+
+```{r}
+library(summarytools)
+dfSummary(vars)
+```
+
+
+```{r}
+library(GGally)
+
+ggpairs(df[,5:9])
+```
+
+
+```{r}
+vars <- df[,5:9]
+
+library(corrplot)
+
+corrplot(cor(vars),
+  method = "number",
+  type = "upper" # show only upper side
+)
+```
+
+
+```{r}
+library(correlation)
+
+correlation::correlation(vars,
+  include_factors = TRUE, method = "auto"
+)
+```
+
+Proportion of obesity is negatively correlated with median income; counties with lower median incomes tend to have higher obesity rates. 
+Proportion of obesity is negatively correlated with proportion of adults with high school education or higher; counties with lower proportion of educated adults tend to have higher obesity rates. 
+Proportion of obesity is positively correlated with proportion of fast food restaurants; counties with a greater density of fast food restaurants tend to have higher obesity rates. 
+There seems to be no linear relationship between proportion of obesity and proportion of doctors in a county. 
+
+Median income and proportion of high school graduates is positively correlated. 
+Median income and proportion of fast food restaurants is weakly negatively correlated; counties with higher median incomes tend to have fewer fast food restaurants.
+There seems to be no linear relationship between median income and proportion of doctors. 
+
+Proportion of high school graduates and proportion of fast food restaurants is negatively correlated; counties with a higher density of fast food chains tends to have lower high school graduate rates. 
+Proportion of high school graduates and proportion of doctor coverage are positively correlated; counties with a higher proportion of high school graduates tend to have a higher proportion of doctor coverage. 
+
+Proportion of fast food restaurants and proportion of doctor coverage is weakly negatively correlated; counties with a higher proportion of fast food restaurants tend to have a lower proportion of doctor coverage. 
+
+Observing these correlations is important to see what patterns are in our data. 
