@@ -30,6 +30,7 @@ library(car)
 library(e1071) 
 library(reshape)
 library(broom)
+
 ```
 
 
@@ -38,46 +39,43 @@ library(broom)
 # Read the data
 data <- read.csv("US Project Data.csv")
 
-# Ensure that the data frame is a tibble for better compatibility with tidyverse functions
-data <- as_tibble(data)
-
-# Select the needed columns explicitly using dplyr::select to avoid conflicts
+# Select the needed columns
 data <- data %>%
-  dplyr::select(MedianIncE, P_HS, P_FastFood, P_Doctor, Obesity_Prob)
+  select(MedianIncE, P_HS, P_FastFood, P_Doctor, Obesity_Prob)
+
+# Recode the response variable as numeric
+data$ObesityProb_numeric <- ifelse(data$Obesity_Prob == "Higher Severity", 1, 0)
+
+# Convert the response variable to a factor with valid R names
+data$ObesityProb_numeric <- factor(data$ObesityProb_numeric, levels = c(0, 1), labels = c("Class0", "Class1"))
 
 # View the first few rows of the modified data
-print(head(data))
+#print(head(data))
 
 
-df_summary = data %>%
-  group_by(Obesity_Prob) %>%
-  summarise(count = n(),
-            proportion = n() / nrow(data))
-df_summary
+#df_summary = data %>%
+#  group_by(Obesity_Prob) %>%
+#  summarise(count = n(),
+#            proportion = n() / nrow(data))
+#df_summary
 
 
 #this is a 49:51 ratio, which is relatively balanced. 
 
 # Recode as numeric
-data = data %>%
-  mutate(
-    ObesityProb_numeric = case_when(
-      Obesity_Prob == "Higher Severity" ~ 1,
-      Obesity_Prob == "Lower Severity" ~ 0
-    )
-  )
-# Standardize the predictor variables
-data <- data %>%
-  mutate(across(c(MedianIncE, P_HS, P_FastFood, P_Doctor), scale))
+#data = data %>%
+#  mutate(
+#    ObesityProb_numeric = case_when(
+#      Obesity_Prob == "Higher Severity" ~ 1,
+#      Obesity_Prob == "Lower Severity" ~ 0
+ 
+
+
 
 ```
 
 
-```{r}
-#split the dataset into testing and training 
-# Calculate the mean of the numeric response variable
-
-
+```{r split-data}
 # Split the data into training (60%) and testing (40%) sets
 set.seed(123) # For reproducibility
 trainIndex <- createDataPartition(data$ObesityProb_numeric, p = 0.6, list = FALSE)
@@ -85,32 +83,36 @@ trainIndex <- createDataPartition(data$ObesityProb_numeric, p = 0.6, list = FALS
 trainData <- data[trainIndex, ]
 testData <- data[-trainIndex, ]
 
-# Create X_train, X_test, Y_train, Y_test
-X_train <- trainData %>% dplyr::select(MedianIncE, P_HS, P_FastFood, P_Doctor)
+# Separate predictors (X) and target (Y)
+X_train <- trainData %>% select(MedianIncE, P_HS, P_FastFood, P_Doctor)
 Y_train <- trainData$ObesityProb_numeric
 
-X_test <- testData %>% dplyr::select(MedianIncE, P_HS, P_FastFood, P_Doctor)
+X_test <- testData %>% select(MedianIncE, P_HS, P_FastFood, P_Doctor)
 Y_test <- testData$ObesityProb_numeric
 
+# Ensure the factor levels of Y_train are valid R variable names
+levels(Y_train) <- make.names(levels(Y_train))
+
+
 # Print the sizes of the training and testing sets
-print(paste("Training set size:", nrow(trainData)))
-print(paste("Testing set size:", nrow(testData)))
+#print(paste("Training set size:", nrow(trainData)))
+#print(paste("Testing set size:", nrow(testData)))
 
 # Create summary tables for class distribution
-train_summary <- trainData %>%
-  group_by(ObesityProb_numeric) %>%
-  summarise(count = n(), proportion = n() / nrow(trainData))
+#train_summary <- trainData %>%
+#  group_by(ObesityProb_numeric) %>%
+#  summarise(count = n(), proportion = n() / nrow(trainData))
 
-test_summary <- testData %>%
-  group_by(ObesityProb_numeric) %>%
-  summarise(count = n(), proportion = n() / nrow(testData))
+#test_summary <- testData %>%
+#  group_by(ObesityProb_numeric) %>%
+ # summarise(count = n(), proportion = n() / nrow(testData))
 
 # Print the summary tables
-print("Training set class distribution:")
-print(train_summary)
+#print("Training set class distribution:")
+#print(train_summary)
 
-print("Testing set class distribution:")
-print(test_summary)
+#print("Testing set class distribution:")
+#print(test_summary)
 
 ```
 
@@ -195,21 +197,56 @@ print(confusion_matrix_tree)
 accuracy_tree <- sum(diag(confusion_matrix_tree)) / sum(confusion_matrix_tree)
 print(paste("Classification Tree Accuracy: ", accuracy_tree))
 ```
+```{r}
+# Define the parameter grid for hyperparameter tuning
+tune_grid <- expand.grid(mtry = c(1, 2, 3, 4))
+
+# Perform hyperparameter tuning using caret
+control <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+tuned_rf <- train(
+  x = X_train,
+  y = Y_train,
+  method = "rf",
+  metric = "ROC",
+  tuneGrid = tune_grid,
+  trControl = control
+)
+
+# Print the best parameters
+print(tuned_rf$bestTune)
+```
+
+
 
 ```{r}
-# Fit the random forest model
-set.seed(123)
-rf_model <- randomForest(Y_train ~ MedianIncE + P_HS + P_FastFood + P_Doctor, 
-                         data = cbind(X_train, Y_train), ntree = 500, mtry = 2, importance = TRUE)
+# Fit the random forest model with the best parameters
+best_rf_model <- randomForest(
+  ObesityProb_numeric ~ MedianIncE + P_HS + P_FastFood + P_Doctor, 
+  data = trainData, 
+  ntree = 500, 
+  mtry = tuned_rf$bestTune$mtry, 
+  importance = TRUE
+)
 
 # Print the random forest model
-print(rf_model)
-
+print(best_rf_model)
+```
+```{r}
 # Generate predictions on the testing data using the random forest model
-testData$rf_predictions <- predict(rf_model, newdata = X_test)
+testData$rf_predictions <- predict(best_rf_model, newdata = X_test, type = "prob")[,2]
+
+# Calculate ROC-AUC
+roc_obj <- roc(Y_test, testData$rf_predictions)
+roc_auc <- auc(roc_obj)
+print(paste("Random Forest ROC-AUC: ", roc_auc))
+
+# Plot the ROC curve
+plot(roc_obj, main = paste("ROC Curve - AUC:", round(roc_auc, 3)))
 
 # Create a confusion matrix for the random forest
-confusion_matrix_rf <- table(Predicted = testData$rf_predictions, Actual = Y_test)
+testData$rf_pred_class <- ifelse(testData$rf_predictions > 0.5, "Class1", "Class0")
+confusion_matrix_rf <- table(Predicted = testData$rf_pred_class, Actual = Y_test)
 
 # Print the confusion matrix for the random forest
 print(confusion_matrix_rf)
@@ -217,9 +254,11 @@ print(confusion_matrix_rf)
 # Calculate accuracy for the random forest
 accuracy_rf <- sum(diag(confusion_matrix_rf)) / sum(confusion_matrix_rf)
 print(paste("Random Forest Accuracy: ", accuracy_rf))
+```
 
+```{r}
 # Plot variable importance
-importance_rf <- importance(rf_model)
-varImpPlot(rf_model)
+importance_rf <- importance(best_rf_model)
+varImpPlot(best_rf_model)
 ```
 
