@@ -15,22 +15,55 @@ df <- read.csv("US Project Data.csv")
 
 ```{r}
 par(mfcol=c(3,3))
-hist(df$P_Obesity)
+hist(df$P_Obesity, xlab = "Proportion of Obesity per County", main = "", col = "red")
 hist(df$MedianIncE)
 hist(df$P_HS)
 hist(df$P_FastFood)
 hist(df$P_Doctor)
 ```
 
+```{r}
+#library(ggplot2)
+
+ggplot(df, aes(x=P_Obesity)) + 
+  geom_histogram(binwidth = 1, color="black", fill = "lightblue") + 
+  geom_vline(aes(xintercept=median(P_Obesity)), color="darkblue", linetype="dashed",  linewidth=1) + 
+  labs(x="Percentage of Obesity per County", y = "Count") + 
+  theme_bw()
+
+ggplot(df, aes(x=MedianIncE)) + 
+  geom_histogram(binwidth = 5000, color="black", fill="lightblue") + 
+  labs(x="Median Income per County", y = "Count") + 
+  geom_vline(aes(xintercept=median(MedianIncE)), color="darkblue", linetype="dashed",  linewidth=1) + 
+  theme_bw()
+
+ggplot(df, aes(x=P_HS)) + 
+  geom_histogram(binwidth = 5, color="black", fill="lightblue") + 
+  labs(x="Percentage of people with a H.S. degree or higher per County", y = "Count") +
+  geom_vline(aes(xintercept=median(P_HS)), color="darkblue", linetype="dashed",  linewidth=1) + 
+  theme_bw()
+
+ggplot(df, aes(x=P_FastFood)) + 
+  geom_histogram(binwidth = 5, color="black", fill="lightblue") + 
+  labs(x="Percentage of restaurants that are limited-service per County", y = "Count") +
+  geom_vline(aes(xintercept=median(P_FastFood)), color="darkblue", linetype="dashed",  linewidth=1) + 
+  theme_bw()
+
+ggplot(df, aes(x=P_Doctor)) + 
+  geom_histogram(binwidth = 5, color="black", fill="lightblue") + 
+  labs(x="Percentage of adults with doctors per County", y = "Count") + 
+  geom_vline(aes(xintercept=median(P_Doctor)), color="darkblue", linetype="dashed",  linewidth=1) +
+  theme_bw()
+```
 
 
 ```{r}
-par(mfcol=c(3,3))
-boxplot(df$P_Obesity)
-boxplot(df$MedianIncE)
-boxplot(df$P_HS)
-boxplot(df$P_FastFood)
-boxplot(df$P_Doctor)
+par(mfrow=c(2,3))
+boxplot(df$P_Obesity, main = "Obesity by County", horizontal = T)
+boxplot(df$MedianIncE, main = "Median Income per County", horizontal = T)
+boxplot(df$P_HS, main = "High School Graduates per County", horizontal = T)
+boxplot(df$P_FastFood, main = "Fast Food Restaurants per County", horizontal = T)
+boxplot(df$P_Doctor, main = "Doctor Coverage per County", horizontal = T)
 ```
 
 ```{r}
@@ -53,14 +86,25 @@ library(corrplot)
 
 corrplot(cor(vars),
   method = "number",
+  bg="lightgray",
+  outline = T,
+  type = "upper" # show only upper side
+)
+```
+
+```{r}
+corrplot(cor(vars),
+  method = "ellipse",
+  outline = TRUE,
   type = "upper" # show only upper side
 )
 ```
 
 
+
 ```{r}
 library(correlation)
-
+vars <- df[,5:9]
 correlation::correlation(vars,
   include_factors = TRUE, method = "auto"
 )
