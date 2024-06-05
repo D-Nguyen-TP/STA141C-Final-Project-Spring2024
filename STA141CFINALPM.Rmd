@@ -46,8 +46,8 @@ data <- data %>%
 # Recode the response variable as numeric
 data$ObesityProb_numeric <- ifelse(data$Obesity_Prob == "Higher Severity", 1, 0)
 
-# Convert the response variable to a factor with valid R names
-data$ObesityProb_numeric <- factor(data$ObesityProb_numeric, levels = c(0, 1), labels = c("Class0", "Class1"))
+# Convert the response variable to a factor with custom labels
+data$ObesityProb_numeric <- factor(data$ObesityProb_numeric, levels = c(0, 1), labels = c("Lower Severity", "Higher Severity"))
 
 # View the first few rows of the modified data
 #print(head(data))
@@ -90,9 +90,13 @@ Y_train <- trainData$ObesityProb_numeric
 X_test <- testData %>% select(MedianIncE, P_HS, P_FastFood, P_Doctor)
 Y_test <- testData$ObesityProb_numeric
 
-# Ensure the factor levels of Y_train are valid R variable names
-levels(Y_train) <- make.names(levels(Y_train))
+# Convert to matrix for glmnet
+X_train_matrix <- as.matrix(X_train)
+X_test_matrix <- as.matrix(X_test)
 
+# Convert Y_train and Y_test to numeric
+Y_train_numeric <- ifelse(Y_train == "Higher Severity", 1, 0)
+Y_test_numeric <- ifelse(Y_test == "Higher Severity", 1, 0)
 
 # Print the sizes of the training and testing sets
 #print(paste("Training set size:", nrow(trainData)))
@@ -113,6 +117,9 @@ levels(Y_train) <- make.names(levels(Y_train))
 
 #print("Testing set class distribution:")
 #print(test_summary)
+# Check for missing values in the training data
+# Check for missing values in the training data
+
 
 ```
 
@@ -125,19 +132,9 @@ model <- glm(Y_train ~ (MedianIncE + P_HS + P_FastFood + P_Doctor)^2,
 
 # Summary of the model
 summary(model)
-
 ```
-
-
 ```{r}
-# Perform stepwise selection to find the best model
-#best_model <- step(initial_model, direction = "both")
 
-# Summary of the best model
-#summary(best_model)
-```
-
-```{r}
 # Generate predictions on the testing data using the model
 testData$logistic_predictions <- predict(model, newdata = X_test, type = "response")
 
@@ -174,6 +171,72 @@ importance %>%
   theme_minimal()
 ```
 
+
+```{r}
+# Fit the Lasso model
+lasso_model <- cv.glmnet(X_train_matrix, Y_train_numeric, alpha = 1, family = "binomial")
+
+# Get the best lambda value
+best_lambda_lasso <- lasso_model$lambda.min
+
+# Predict on test data
+lasso_predictions <- predict(lasso_model, newx = X_test_matrix, s = best_lambda_lasso, type = "response")
+lasso_pred_class <- ifelse(lasso_predictions > 0.5, 1, 0)
+
+# Ensure factor levels are the same for comparison
+lasso_pred_class <- factor(lasso_pred_class, levels = c(0, 1), labels = c("Lower Severity", "Higher Severity"))
+Y_test <- factor(Y_test, levels = c("Lower Severity", "Higher Severity"))
+
+# Evaluate model
+confusion_matrix_lasso <- table(Predicted = lasso_pred_class, Actual = Y_test)
+roc_obj_lasso <- roc(as.numeric(Y_test_numeric), lasso_predictions)
+roc_auc_lasso <- auc(roc_obj_lasso)
+
+precision_lasso <- posPredValue(lasso_pred_class, Y_test)
+recall_lasso <- sensitivity(lasso_pred_class, Y_test)
+f1_score_lasso <- (2 * precision_lasso * recall_lasso) / (precision_lasso + recall_lasso)
+
+print(paste("Lasso ROC-AUC: ", roc_auc_lasso))
+print(paste("Lasso Precision: ", precision_lasso))
+print(paste("Lasso Recall: ", recall_lasso))
+print(paste("Lasso F1-Score: ", f1_score_lasso))
+print(paste("Lasso Accuracy: ", sum(diag(confusion_matrix_lasso)) / sum(confusion_matrix_lasso)))
+```
+
+```{r}
+# Fit the Ridge model
+ridge_model <- cv.glmnet(X_train_matrix, Y_train_numeric, alpha = 0, family = "binomial")
+
+# Get the best lambda value
+best_lambda_ridge <- ridge_model$lambda.min
+
+# Predict on test data
+ridge_predictions <- predict(ridge_model, newx = X_test_matrix, s = best_lambda_ridge, type = "response")
+ridge_pred_class <- ifelse(ridge_predictions > 0.5, 1, 0)
+
+# Ensure factor levels are the same for comparison
+ridge_pred_class <- factor(ridge_pred_class, levels = c(0, 1), labels = c("Lower Severity", "Higher Severity"))
+Y_test <- factor(Y_test, levels = c("Lower Severity", "Higher Severity"))
+
+# Evaluate model
+confusion_matrix_ridge <- table(Predicted = ridge_pred_class, Actual = Y_test)
+roc_obj_ridge <- roc(as.numeric(Y_test_numeric), ridge_predictions)
+roc_auc_ridge <- auc(roc_obj_ridge)
+
+precision_ridge <- posPredValue(ridge_pred_class, Y_test)
+recall_ridge <- sensitivity(ridge_pred_class, Y_test)
+f1_score_ridge <- (2 * precision_ridge * recall_ridge) / (precision_ridge + recall_ridge)
+
+print(paste("Ridge ROC-AUC: ", roc_auc_ridge))
+print(paste("Ridge Precision: ", precision_ridge))
+print(paste("Ridge Recall: ", recall_ridge))
+print(paste("Ridge F1-Score: ", f1_score_ridge))
+print(paste("Ridge Accuracy: ", sum(diag(confusion_matrix_ridge)) / sum(confusion_matrix_ridge)))
+```
+
+
+
+
 ```{r}
 # Fit the classification tree with tuning parameters
 tree_model <- rpart(Y_train ~ MedianIncE + P_HS + P_FastFood + P_Doctor, 
@@ -198,6 +261,8 @@ accuracy_tree <- sum(diag(confusion_matrix_tree)) / sum(confusion_matrix_tree)
 print(paste("Classification Tree Accuracy: ", accuracy_tree))
 ```
 ```{r}
+Y_train_valid <- factor(Y_train, levels = c("Lower Severity", "Higher Severity"), labels = c("Class0", "Class1"))
+
 # Define the parameter grid for hyperparameter tuning
 tune_grid <- expand.grid(mtry = c(1, 2, 3, 4))
 
@@ -206,7 +271,7 @@ control <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFun
 
 tuned_rf <- train(
   x = X_train,
-  y = Y_train,
+  y = Y_train_valid,
   method = "rf",
   metric = "ROC",
   tuneGrid = tune_grid,
