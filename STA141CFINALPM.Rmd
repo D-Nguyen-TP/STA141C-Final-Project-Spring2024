@@ -30,7 +30,8 @@ library(car)
 library(e1071) 
 library(reshape)
 library(broom)
-
+library(knitr)
+library(kableExtra)
 ```
 
 
@@ -90,13 +91,14 @@ Y_train <- trainData$ObesityProb_numeric
 X_test <- testData %>% select(MedianIncE, P_HS, P_FastFood, P_Doctor)
 Y_test <- testData$ObesityProb_numeric
 
-# Convert to matrix for glmnet
-X_train_matrix <- as.matrix(X_train)
-X_test_matrix <- as.matrix(X_test)
+# Convert to matrix for glmnet using model.matrix
+X_train_matrix <- model.matrix(ObesityProb_numeric ~ MedianIncE + P_HS + P_FastFood + P_Doctor, trainData)[, -1]
+X_test_matrix <- model.matrix(ObesityProb_numeric ~ MedianIncE + P_HS + P_FastFood + P_Doctor, testData)[, -1]
 
 # Convert Y_train and Y_test to numeric
 Y_train_numeric <- ifelse(Y_train == "Higher Severity", 1, 0)
 Y_test_numeric <- ifelse(Y_test == "Higher Severity", 1, 0)
+
 
 # Print the sizes of the training and testing sets
 #print(paste("Training set size:", nrow(trainData)))
@@ -125,205 +127,282 @@ Y_test_numeric <- ifelse(Y_test == "Higher Severity", 1, 0)
 
 
 ```{r}
-# Fit the logistic regression model with all predictors and their interactions
-model <- glm(Y_train ~ (MedianIncE + P_HS + P_FastFood + P_Doctor)^2, 
-             data = cbind(X_train, Y_train), 
-             family = binomial())
+# Define the function to fit logistic regression and calculate performance metrics
+logReg_feat <- function(feature_set, data_train, data_test, y_train, y_test) {
+  formula <- as.formula(paste("ObesityProb_numeric ~", paste(feature_set, collapse = " + ")))
+  model <- glm(formula, data = data_train, family = binomial)
+  
+  # Predict on the test set
+  predictions <- predict(model, newdata = data_test, type = "response")
+  predictions_binary <- ifelse(predictions >= 0.5, "Higher Severity", "Lower Severity")
+  
+  accuracy <- mean(predictions_binary == y_test)
+  aic <- AIC(model)
+  bic <- BIC(model)
+  
+  return(list(features = feature_set, model = model, AIC = aic, BIC = bic, Accuracy = accuracy))
+}
 
-# Summary of the model
-summary(model)
-```
-```{r}
+# Function to evaluate all combinations of features
+getBest <- function(k, feature_names, data_train, data_test, y_train, y_test) {
+  results <- list()
+  
+  combos <- combn(feature_names, k, simplify = FALSE)
+  for (combo in combos) {
+    results[[paste(combo, collapse = "+")]] <- logReg_feat(combo, data_train, data_test, y_train, y_test)
+  }
+  
+  models <- do.call(rbind, lapply(results, function(x) data.frame(AIC = x$AIC, BIC = x$BIC, Accuracy = x$Accuracy, features = paste(x$features, collapse = "+"))))
+  best_model <- models[which.min(models$AIC),]
+  
+  return(best_model)
+}
 
-# Generate predictions on the testing data using the model
-testData$logistic_predictions <- predict(model, newdata = X_test, type = "response")
+# Find the best model for each number of features
+feature_names <- colnames(X_train)
+models_best <- data.frame(AIC = numeric(), BIC = numeric(), Accuracy = numeric(), features = character())
 
-# Evaluate the model performance on the testing set
-# Convert predictions to binary outcomes using a threshold of 0.5
-testData$predicted_class <- ifelse(testData$logistic_predictions > 0.5, 1, 0)
+for (i in 1:length(feature_names)) {
+  best_model <- getBest(i, feature_names, trainData, testData, Y_train, Y_test)
+  models_best <- rbind(models_best, best_model)
+}
 
-# Create a confusion matrix
-confusion_matrix <- table(Predicted = testData$predicted_class, Actual = Y_test)
-
-# Print the confusion matrix
-print(confusion_matrix)
-```
-
-```{r}
-# Calculate accuracy
-accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
-print(paste("Accuracy: ", accuracy))
-
-# Calculate feature importance
-importance <- broom::tidy(model) %>%
-  mutate(importance = abs(estimate)) %>%
-  arrange(desc(importance))
-
-# Print feature importance
-print(importance)
-
-# Plot feature importance
-importance %>%
-  ggplot(aes(x = reorder(term, importance), y = importance)) +
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  labs(title = "Feature Importance", x = "Features", y = "Importance") +
-  theme_minimal()
+# Display the best models by feature count
+print(models_best)
 ```
 
+```{r nicer-table, echo=TRUE, message=FALSE, warning=FALSE}
+
+
+# Create the dataframe with your results
+models_best <- data.frame(
+  AIC = c(1774.612, 1666.022, 1610.928, 1563.279),
+  BIC = c(1785.357, 1682.138, 1632.417, 1590.139),
+  Accuracy = c(0.7101039, 0.7186025, 0.7497639, 0.7620397),
+  features = c("MedianIncE", "MedianIncE+P_HS", "MedianIncE+P_HS+P_Doctor", "MedianIncE+P_HS+P_FastFood+P_Doctor")
+)
+
+# Format the table
+kable(models_best, caption = "Best Logistic Regression Models by Number of Features") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(4, width = "20em") %>%
+  row_spec(0, bold = TRUE, background = "#D3D3D3")
+```
+
+
+
 
 ```{r}
-# Fit the Lasso model
+# Final Model with all predictors
+final_model <- glm(ObesityProb_numeric ~ MedianIncE + P_HS + P_FastFood + P_Doctor, data = trainData, family = binomial)
+
+logistic_probabilities <- predict(final_model, newdata = testData, type = "response")
+logistic_predictions <- ifelse(logistic_probabilities >= 0.5, "Higher Severity", "Lower Severity")
+logistic_cm <- confusionMatrix(as.factor(logistic_predictions), testData$ObesityProb_numeric)
+print(logistic_cm)
+```
+
+```{r}
+# Check for multicollinearity
+vif(final_model)
+```
+
+```{r}
+#Diagnostic Plots
+par(mfrow = c(2, 2))
+plot(final_model)
+```
+
+```{r}
+#validation with K-fold cross-validation
+# Set up training control for 10-fold cross-validation
+train_control <- trainControl(method = "cv", number = 10)
+
+# Perform 10-fold cross-validation
+set.seed(123)  # For reproducibility
+cv_model <- train(ObesityProb_numeric ~ MedianIncE + P_HS + P_FastFood + P_Doctor, 
+                  data = trainData, 
+                  method = "glm", 
+                  family = "binomial", 
+                  trControl = train_control)
+
+# Print cross-validation results
+print(cv_model)
+
+```
+```{r}
+# Predict probabilities on the test set
+probabilities <- predict(final_model, newdata = testData, type = "response")
+
+# Compute ROC curve
+roc_curve <- roc(testData$ObesityProb_numeric, probabilities)
+
+# Plot ROC curve
+plot(roc_curve, main = "ROC Curve")
+```
+
+```{r}
+# Predict binary outcomes
+predictions <- ifelse(probabilities >= 0.5, "Higher Severity", "Lower Severity")
+
+# Confusion matrix
+confusionMatrix(as.factor(predictions), testData$ObesityProb_numeric)
+```
+
+
+
+```{r}
+# Fit Lasso regression model with cross-validation
+set.seed(123)
 lasso_model <- cv.glmnet(X_train_matrix, Y_train_numeric, alpha = 1, family = "binomial")
 
-# Get the best lambda value
-best_lambda_lasso <- lasso_model$lambda.min
+# Predict probabilities on the test set
+lasso_probabilities <- predict(lasso_model, newx = X_test_matrix, s = lasso_model$lambda.min, type = "response")
+lasso_predictions <- ifelse(lasso_probabilities >= 0.5, "Higher Severity", "Lower Severity")
 
-# Predict on test data
-lasso_predictions <- predict(lasso_model, newx = X_test_matrix, s = best_lambda_lasso, type = "response")
-lasso_pred_class <- ifelse(lasso_predictions > 0.5, 1, 0)
+# Convert predictions and true values to factors
+lasso_predictions <- factor(lasso_predictions, levels = levels(testData$ObesityProb_numeric))
+Y_test_factor <- factor(testData$ObesityProb_numeric, levels = levels(testData$ObesityProb_numeric))
 
-# Ensure factor levels are the same for comparison
-lasso_pred_class <- factor(lasso_pred_class, levels = c(0, 1), labels = c("Lower Severity", "Higher Severity"))
-Y_test <- factor(Y_test, levels = c("Lower Severity", "Higher Severity"))
+# Calculate the confusion matrix
+lasso_cm <- confusionMatrix(lasso_predictions, Y_test_factor)
 
-# Evaluate model
-confusion_matrix_lasso <- table(Predicted = lasso_pred_class, Actual = Y_test)
-roc_obj_lasso <- roc(as.numeric(Y_test_numeric), lasso_predictions)
-roc_auc_lasso <- auc(roc_obj_lasso)
+# Manually calculate AIC and BIC
+log_likelihood <- sum(ifelse(Y_test_factor == "Higher Severity", log(lasso_probabilities), log(1 - lasso_probabilities)))
+n <- length(Y_test_factor)
+p <- sum(coef(lasso_model, s = "lambda.min") != 0) - 1  # number of non-zero predictors excluding the intercept
 
-precision_lasso <- posPredValue(lasso_pred_class, Y_test)
-recall_lasso <- sensitivity(lasso_pred_class, Y_test)
-f1_score_lasso <- (2 * precision_lasso * recall_lasso) / (precision_lasso + recall_lasso)
+aic_lasso <- -2 * log_likelihood + 2 * p
+bic_lasso <- -2 * log_likelihood + log(n) * p
 
-print(paste("Lasso ROC-AUC: ", roc_auc_lasso))
-print(paste("Lasso Precision: ", precision_lasso))
-print(paste("Lasso Recall: ", recall_lasso))
-print(paste("Lasso F1-Score: ", f1_score_lasso))
-print(paste("Lasso Accuracy: ", sum(diag(confusion_matrix_lasso)) / sum(confusion_matrix_lasso)))
+# Display results
+print(lasso_cm)
+print(paste("AIC:", round(aic_lasso, 2)))
+print(paste("BIC:", round(bic_lasso, 2)))
+
+# Display coefficients
+lasso_coef <- coef(lasso_model, s = lasso_model$lambda.min)
+print(lasso_coef)
 ```
 
 ```{r}
-# Fit the Ridge model
+# Fit Ridge regression model with cross-validation
+set.seed(123)
 ridge_model <- cv.glmnet(X_train_matrix, Y_train_numeric, alpha = 0, family = "binomial")
+ridge_probabilities <- predict(ridge_model, newx = X_test_matrix, s = ridge_model$lambda.min, type = "response")
+ridge_predictions <- ifelse(ridge_probabilities >= 0.5, "Higher Severity", "Lower Severity")
 
-# Get the best lambda value
-best_lambda_ridge <- ridge_model$lambda.min
+# Convert predictions and true values to factors
+ridge_predictions <- factor(ridge_predictions, levels = levels(testData$ObesityProb_numeric))
+Y_test_factor <- factor(testData$ObesityProb_numeric, levels = levels(testData$ObesityProb_numeric))
 
-# Predict on test data
-ridge_predictions <- predict(ridge_model, newx = X_test_matrix, s = best_lambda_ridge, type = "response")
-ridge_pred_class <- ifelse(ridge_predictions > 0.5, 1, 0)
+# Calculate the confusion matrix
+ridge_cm <- confusionMatrix(ridge_predictions, Y_test_factor)
 
-# Ensure factor levels are the same for comparison
-ridge_pred_class <- factor(ridge_pred_class, levels = c(0, 1), labels = c("Lower Severity", "Higher Severity"))
-Y_test <- factor(Y_test, levels = c("Lower Severity", "Higher Severity"))
+# Manually calculate AIC and BIC
+log_likelihood_ridge <- sum(ifelse(Y_test_factor == "Higher Severity", log(ridge_probabilities), log(1 - ridge_probabilities)))
+n_ridge <- length(Y_test_factor)
+p_ridge <- sum(coef(ridge_model, s = "lambda.min") != 0) - 1  # number of non-zero predictors excluding the intercept
 
-# Evaluate model
-confusion_matrix_ridge <- table(Predicted = ridge_pred_class, Actual = Y_test)
-roc_obj_ridge <- roc(as.numeric(Y_test_numeric), ridge_predictions)
-roc_auc_ridge <- auc(roc_obj_ridge)
+aic_ridge <- -2 * log_likelihood_ridge + 2 * p_ridge
+bic_ridge <- -2 * log_likelihood_ridge + log(n_ridge) * p_ridge
 
-precision_ridge <- posPredValue(ridge_pred_class, Y_test)
-recall_ridge <- sensitivity(ridge_pred_class, Y_test)
-f1_score_ridge <- (2 * precision_ridge * recall_ridge) / (precision_ridge + recall_ridge)
+# Display results
+print(ridge_cm)
+print(paste("AIC:", round(aic_ridge, 2)))
+print(paste("BIC:", round(bic_ridge, 2)))
 
-print(paste("Ridge ROC-AUC: ", roc_auc_ridge))
-print(paste("Ridge Precision: ", precision_ridge))
-print(paste("Ridge Recall: ", recall_ridge))
-print(paste("Ridge F1-Score: ", f1_score_ridge))
-print(paste("Ridge Accuracy: ", sum(diag(confusion_matrix_ridge)) / sum(confusion_matrix_ridge)))
-```
-
-
-
-
-```{r}
-# Fit the classification tree with tuning parameters
-tree_model <- rpart(Y_train ~ MedianIncE + P_HS + P_FastFood + P_Doctor, 
-                    data = cbind(X_train, Y_train), method = "class",
-                    control = rpart.control(minsplit = 20, cp = 0.01))
-
-# Print and plot the tree model with rpart.plot for better visualization
-print(tree_model)
-rpart.plot(tree_model)
-
-# Generate predictions on the testing data using the tree model
-testData$tree_predictions <- predict(tree_model, newdata = X_test, type = "class")
-
-# Create a confusion matrix for the classification tree
-confusion_matrix_tree <- table(Predicted = testData$tree_predictions, Actual = Y_test)
-
-# Print the confusion matrix for the classification tree
-print(confusion_matrix_tree)
-
-# Calculate accuracy for the classification tree
-accuracy_tree <- sum(diag(confusion_matrix_tree)) / sum(confusion_matrix_tree)
-print(paste("Classification Tree Accuracy: ", accuracy_tree))
+# Display coefficients
+ridge_coef <- coef(ridge_model, s = ridge_model$lambda.min)
+print(ridge_coef)
 ```
 ```{r}
-Y_train_valid <- factor(Y_train, levels = c("Lower Severity", "Higher Severity"), labels = c("Class0", "Class1"))
-
-# Define the parameter grid for hyperparameter tuning
-tune_grid <- expand.grid(mtry = c(1, 2, 3, 4))
-
-# Perform hyperparameter tuning using caret
-control <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
-
-tuned_rf <- train(
-  x = X_train,
-  y = Y_train_valid,
-  method = "rf",
-  metric = "ROC",
-  tuneGrid = tune_grid,
-  trControl = control
+# Create a comparison table for performance metrics
+model_comparison <- data.frame(
+  Metric = c("Accuracy", "Sensitivity", "Specificity", "Precision (PPV)", "NPV", "AIC", "BIC"),
+  Lasso = c(
+    lasso_cm$overall['Accuracy'],
+    lasso_cm$byClass['Sensitivity'],
+    lasso_cm$byClass['Specificity'],
+    lasso_cm$byClass['Pos Pred Value'],
+    lasso_cm$byClass['Neg Pred Value'],
+    round(aic_lasso, 2),
+    round(bic_lasso, 2)
+  ),
+  Ridge = c(
+    ridge_cm$overall['Accuracy'],
+    ridge_cm$byClass['Sensitivity'],
+    ridge_cm$byClass['Specificity'],
+    ridge_cm$byClass['Pos Pred Value'],
+    ridge_cm$byClass['Neg Pred Value'],
+    round(aic_ridge, 2),
+    round(bic_ridge, 2)
+  )
 )
 
-# Print the best parameters
-print(tuned_rf$bestTune)
+# Display the comparison table
+library(knitr)
+library(kableExtra)
+kable(model_comparison, caption = "Comparison of Lasso and Ridge Regression Models") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  row_spec(0, bold = TRUE, background = "#D3D3D3")
+```
+
+```{r roc-curve-comparison, echo=TRUE, message=FALSE, warning=FALSE}
+
+# Compute ROC curve for Lasso
+lasso_probabilities <- predict(lasso_model, newx = X_test_matrix, s = lasso_model$lambda.min, type = "response")
+lasso_roc_curve <- roc(testData$ObesityProb_numeric, lasso_probabilities)
+
+# Compute ROC curve for Ridge
+ridge_probabilities <- predict(ridge_model, newx = X_test_matrix, s = ridge_model$lambda.min, type = "response")
+ridge_roc_curve <- roc(testData$ObesityProb_numeric, ridge_probabilities)
+
+# Plot ROC curves
+plot(lasso_roc_curve, col = "blue", main = "ROC Curve Comparison", print.auc = TRUE)
+lines(ridge_roc_curve, col = "red")
+legend("bottomright", legend = c("Lasso", "Ridge"), col = c("blue", "red"), lty = 1)
 ```
 
 
+```{r decision-tree, echo=TRUE, message=FALSE, warning=FALSE}
+# Fit a decision tree model
+tree_model <- rpart(ObesityProb_numeric ~ MedianIncE + P_HS + P_FastFood + P_Doctor, data = trainData, method = "class")
+
+# Predict on the test set
+tree_predictions <- predict(tree_model, newdata = testData, type = "class")
+
+# Confusion matrix
+tree_cm <- confusionMatrix(tree_predictions, testData$ObesityProb_numeric)
+
+# Print confusion matrix
+print(tree_cm)
+
+rpart.plot(tree_model, main = "Decision Tree")
+```
 
 ```{r}
-# Fit the random forest model with the best parameters
-best_rf_model <- randomForest(
-  ObesityProb_numeric ~ MedianIncE + P_HS + P_FastFood + P_Doctor, 
-  data = trainData, 
-  ntree = 500, 
-  mtry = tuned_rf$bestTune$mtry, 
-  importance = TRUE
-)
+# Fit a random forest model
+set.seed(123)
+rf_model <- randomForest(ObesityProb_numeric ~ MedianIncE + P_HS + P_FastFood + P_Doctor, data = trainData, ntree = 100)
 
-# Print the random forest model
-print(best_rf_model)
-```
-```{r}
-# Generate predictions on the testing data using the random forest model
-testData$rf_predictions <- predict(best_rf_model, newdata = X_test, type = "prob")[,2]
+# Predict on the test set
+rf_predictions <- predict(rf_model, newdata = testData)
 
-# Calculate ROC-AUC
-roc_obj <- roc(Y_test, testData$rf_predictions)
-roc_auc <- auc(roc_obj)
-print(paste("Random Forest ROC-AUC: ", roc_auc))
+# Confusion matrix
+rf_cm <- confusionMatrix(rf_predictions, testData$ObesityProb_numeric)
 
-# Plot the ROC curve
-plot(roc_obj, main = paste("ROC Curve - AUC:", round(roc_auc, 3)))
+# Print confusion matrix
+print(rf_cm)
 
-# Create a confusion matrix for the random forest
-testData$rf_pred_class <- ifelse(testData$rf_predictions > 0.5, "Class1", "Class0")
-confusion_matrix_rf <- table(Predicted = testData$rf_pred_class, Actual = Y_test)
-
-# Print the confusion matrix for the random forest
-print(confusion_matrix_rf)
-
-# Calculate accuracy for the random forest
-accuracy_rf <- sum(diag(confusion_matrix_rf)) / sum(confusion_matrix_rf)
-print(paste("Random Forest Accuracy: ", accuracy_rf))
+# Plot variable importance for Random Forest
+importance_rf <- importance(rf_model)
+varImpPlot(rf_model, main = "Feature Importance (Random Forest)")
 ```
 
-```{r}
-# Plot variable importance
-importance_rf <- importance(best_rf_model)
-varImpPlot(best_rf_model)
-```
+
+
+
 
