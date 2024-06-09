@@ -50,27 +50,6 @@ data$ObesityProb_numeric <- ifelse(data$Obesity_Prob == "Higher Severity", 1, 0)
 # Convert the response variable to a factor with custom labels
 data$ObesityProb_numeric <- factor(data$ObesityProb_numeric, levels = c(0, 1), labels = c("Lower Severity", "Higher Severity"))
 
-# View the first few rows of the modified data
-#print(head(data))
-
-
-#df_summary = data %>%
-#  group_by(Obesity_Prob) %>%
-#  summarise(count = n(),
-#            proportion = n() / nrow(data))
-#df_summary
-
-
-#this is a 49:51 ratio, which is relatively balanced. 
-
-# Recode as numeric
-#data = data %>%
-#  mutate(
-#    ObesityProb_numeric = case_when(
-#      Obesity_Prob == "Higher Severity" ~ 1,
-#      Obesity_Prob == "Lower Severity" ~ 0
- 
-
 
 
 ```
@@ -99,7 +78,6 @@ X_test_matrix <- model.matrix(ObesityProb_numeric ~ MedianIncE + P_HS + P_FastFo
 Y_train_numeric <- ifelse(Y_train == "Higher Severity", 1, 0)
 Y_test_numeric <- ifelse(Y_test == "Higher Severity", 1, 0)
 
-
 # Print the sizes of the training and testing sets
 #print(paste("Training set size:", nrow(trainData)))
 #print(paste("Testing set size:", nrow(testData)))
@@ -125,7 +103,7 @@ Y_test_numeric <- ifelse(Y_test == "Higher Severity", 1, 0)
 
 ```
 
-
+#Section 3.1 (Logistic Regression)
 ```{r}
 # Define the function to fit logistic regression and calculate performance metrics
 logReg_feat <- function(feature_set, data_train, data_test, y_train, y_test) {
