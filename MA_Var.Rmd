@@ -14,43 +14,42 @@ df <- read.csv("US Project Data.csv")
 
 
 ```{r}
-par(mfcol=c(3,3))
-hist(df$P_Obesity, xlab = "Proportion of Obesity per County", main = "", col = "red")
-hist(df$MedianIncE)
-hist(df$P_HS)
-hist(df$P_FastFood)
-hist(df$P_Doctor)
+ggplot(df, aes(x=P_Obesity, fill = Obesity_Prob)) + 
+  geom_histogram(binwidth = 1, color="black") + 
+  geom_vline(aes(xintercept=median(P_Obesity)), color="darkblue", linetype="dashed",  linewidth=1) + 
+  labs(x="Percentage of Obesity per County", y = "Count") + 
+  theme_bw()
 ```
 
 ```{r}
-#library(ggplot2)
+library(ggplot2)
 
-ggplot(df, aes(x=P_Obesity)) + 
+ggplot(df, aes(x=P_Obesity, color = Obesity_Prob)) + 
   geom_histogram(binwidth = 1, color="black", fill = "lightblue") + 
   geom_vline(aes(xintercept=median(P_Obesity)), color="darkblue", linetype="dashed",  linewidth=1) + 
   labs(x="Percentage of Obesity per County", y = "Count") + 
   theme_bw()
 
-ggplot(df, aes(x=MedianIncE)) + 
-  geom_histogram(binwidth = 5000, color="black", fill="lightblue") + 
+ggplot(df, aes(x=MedianIncE, fill = Obesity_Prob)) + 
+  geom_histogram(binwidth = 5000, color="black") + 
   labs(x="Median Income per County", y = "Count") + 
   geom_vline(aes(xintercept=median(MedianIncE)), color="darkblue", linetype="dashed",  linewidth=1) + 
   theme_bw()
 
-ggplot(df, aes(x=P_HS)) + 
-  geom_histogram(binwidth = 5, color="black", fill="lightblue") + 
+ggplot(df, aes(x=P_HS, fill = Obesity_Prob)) + 
+  geom_histogram(binwidth = 5, color="black") + 
   labs(x="Percentage of people with a H.S. degree or higher per County", y = "Count") +
   geom_vline(aes(xintercept=median(P_HS)), color="darkblue", linetype="dashed",  linewidth=1) + 
   theme_bw()
 
-ggplot(df, aes(x=P_FastFood)) + 
-  geom_histogram(binwidth = 5, color="black", fill="lightblue") + 
+ggplot(df, aes(x=P_FastFood, fill = Obesity_Prob)) + 
+  geom_histogram(binwidth = 5, color="black") + 
   labs(x="Percentage of restaurants that are limited-service per County", y = "Count") +
   geom_vline(aes(xintercept=median(P_FastFood)), color="darkblue", linetype="dashed",  linewidth=1) + 
   theme_bw()
 
-ggplot(df, aes(x=P_Doctor)) + 
-  geom_histogram(binwidth = 5, color="black", fill="lightblue") + 
+ggplot(df, aes(x=P_Doctor, fill = Obesity_Prob)) + 
+  geom_histogram(binwidth = 5, color="black") + 
   labs(x="Percentage of adults with doctors per County", y = "Count") + 
   geom_vline(aes(xintercept=median(P_Doctor)), color="darkblue", linetype="dashed",  linewidth=1) +
   theme_bw()
@@ -66,10 +65,6 @@ boxplot(df$P_FastFood, main = "Fast Food Restaurants per County", horizontal = T
 boxplot(df$P_Doctor, main = "Doctor Coverage per County", horizontal = T)
 ```
 
-```{r}
-library(summarytools)
-dfSummary(vars)
-```
 
 
 ```{r}
