@@ -12,17 +12,21 @@ library(tidyverse)
 library(ggplot2)
 library(flextable)
 library(miscTools)
+library(tigris)
+library(gridExtra)
 ```
 
-## US Census Data
+## US Census Data (This code WILL fail to run without an API key)
+It is required to have an API key loaded into the package to be able to run any `get_acs()` code.
+Advised to not try to run this code unless if your tidycensus is set up already.
 
-```{r, eval = TRUE}
+```{r, eval = TRUE, results=FALSE}
 Inc = get_acs(geography = "county",
               year = 2019, 
               variables = c(medianinc = "B19013_001"),
               survey = "acs5",
               output = "wide",
-              geometry = TRUE)
+              geometry = TRUE) # Geometry was originally set to false to create the finalized data
 
 Inc$GEOID = as.numeric(Inc$GEOID)
 ```
@@ -30,6 +34,7 @@ Inc$GEOID = as.numeric(Inc$GEOID)
 ## Policymap Data:
 
 ```{r, eval = TRUE}
+# Loading all PolicyMap Stuff
 USObesity = read.csv("US OBESITY Percent.csv")
 USEdu = read.csv("US High School Fixed.csv")
 USHealth = read.csv("Doctor Access US Percent.csv")
@@ -37,6 +42,7 @@ USRestaurant = read.csv("US Restaurants Percent.csv")
 ```
 
 ```{r, eval = TRUE}
+# Joining on the Geography code GEOID
 Final_User = Inc %>% left_join(USObesity, by = c("GEOID" = "GeoID")) %>% left_join(USEdu, by = c("GEOID" = "GeoID")) %>% left_join(USHealth, by = c("GEOID" = "GeoID")) %>% left_join(USRestaurant, by = c("GEOID" = "GeoID")) %>% select(GEOID, NAME, SitsinState.x, p_crd_obesity, medianincE, phsp, pfood_fastfoodtakeout, p_doctor)
 ```
 
@@ -47,12 +53,7 @@ Final_User = Final_User %>% filter(phsp != "N/A" & p_crd_obesity != "N/A" & pfoo
 # Use geometry for internal usage only or save it as a shape file
 ```
 
-#Test
-
-```{r}
-Cali = Final_User %>% filter(SitsinState.x == "CA")
-```
-
+# Formatting for Use
 ```{r, eval = TRUE}
 colnames(Final_User) = c("GeoID", "County_State", "State", "P_Obesity", "MedianIncE", "P_HS", "P_FastFood", "P_Doctor", "geometry")
 
@@ -61,45 +62,76 @@ Final_User$P_HS = as.numeric(Final_User$P_HS)
 Final_User$P_FastFood = as.numeric(Final_User$P_FastFood)
 Final_User$P_Doctor = as.numeric(Final_User$P_Doctor)
 ```
+
+# Adding new Classification
+
 ```{r}
 Final_User = Final_User %>% mutate(Obesity_Prob = ifelse(P_Obesity > median(P_Obesity), "Higher Severity", "Lower Severity"))
 ```
 
+DO NOT RUN THIS PART IT WILL CHANGE THE CURRENT CSV
 ```{r, eval = FALSE}
+# DO NOT RUN IT WILL REPLACE THE ORIGINAL DATA (ONLY USE IF NEED UPDATE)
 write.csv(Final_User, "/Users/dnguyen/Desktop/Classes/STA141C/Proj/US Project Data.csv")
-```
-
-```{r}
-test = Final_User %>% filter(State == "CA")
 ```
 
 # Visualization Section
 
+*Loading Finalized Data:*
 ```{r}
 Final_Simple = read.csv("US Project Data.csv")
 library(tmap)
 ```
 
 ```{r}
-ggplot(data = Final_Simple, aes(x = P_Obesity, fill = "red")) + geom_histogram(bins = 30)
+ggplot(data = Final_Simple, aes(x = P_Obesity, fill = "red")) + geom_histogram(bins = 30) + theme(legend.position = "none") + labs(x = "Obesity Percentage", y = "Count", title = "Distribution of Percentage of the County with Obesity")
+```
+
+# Boxplots
+
+```{r}
+plot1 = ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = MedianIncE, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Median Income", y = "", x = "") + theme(legend.position = "none")
 ```
 
 ```{r}
-ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = MedianIncE, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Obesity Classification on Median Income", y = "Median Income Estimates", x = "Severity Type") + theme(legend.position = "none")
-```
-
-```{r}
-ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = P_HS, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Obesity Classification on Percentage of High School Diploma", y = "", x = "Severity Type") + theme(legend.position = "none")
+plot2 = ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = P_HS, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "High School Minimum", y = "", x = "") + theme(legend.position = "none")
 
 ```
 
 ```{r}
-ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = P_Doctor, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Obesity Classification on Percentage Doctor Care", y = "", x = "Severity Type") + theme(legend.position = "none")
+plot3 = ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = P_Doctor, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Doctor Coverage", y = "", x = "") + theme(legend.position = "none")
 ```
 
 ```{r}
-ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = P_FastFood, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Obesity Classification on Percentage Takeout & Fastfood Restaurants", y = "", x = "Severity Type") + theme(legend.position = "none")
+plot4 = ggplot(data = Final_Simple, aes(x = Obesity_Prob, y = P_FastFood, fill = Obesity_Prob)) + geom_boxplot() + coord_flip() + labs(title = "Fastfood & Takeout", y = "", x = "") + theme(legend.position = "none")
 ```
+
+```{r}
+grid.arrange(plot1, plot2, plot3, plot4, ncol = 2)
+```
+
+# Full Map, Removed N/A in Obesity
+This uses the Census API under the argument that `geography = TRUE`. It cannot run because of the tidycensus requiring an API key to get the required data.
+
+Advised to not try to run this code unless if your tidycensus is set up already.
+
+```{r}
+Map = Inc %>% left_join(USObesity, by = c("GEOID" = "GeoID")) %>% select(p_crd_obesity, SitsinState)
+Map_Filtered = Map %>% filter(SitsinState != "AK" & SitsinState != "HI" & p_crd_obesity != "N/A")
+Map_Filtered$p_crd_obesity = as.numeric(Map_Filtered$p_crd_obesity)
+tm_shape(Map_Filtered) + 
+  tm_polygons(col = "p_crd_obesity", style = "quantile", palette = "Reds", title = "") + 
+  tm_layout(
+  main.title = "Percentage of Counties' Population with Obesity (Excluding Alaska & Hawaii)", 
+            main.title.size = 0.9, 
+            main.title.position = "center", 
+            legend.outside = FALSE, 
+            frame = FALSE) + 
+    tm_scale_bar(text.size  = 0.5,  position = c("right", "TOP")) + 
+    tm_compass(type = "4star", position = c("right", "bottom"))
+```
+
+# Map after filtering every single N/A across all variables.
 
 ```{r}
 Final_Filtered = Final_User %>% filter(State != "AK" & State != "HI")
@@ -113,10 +145,20 @@ tm_shape(Final_Filtered) + tm_polygons(col = "P_Obesity", style = "quantile", pa
     tm_compass(type = "4star", position = c("right", "bottom"))
 ```
 
+
+
+
+
 # Flextable Test
 
 ```{r}
-head(Final_Simple) %>% flextable()
+sample_t = head(Final_Simple) %>% flextable() 
+sample_t = add_footer_lines(sample_t, "Note: Geography Data not Included")
+save_as_image(sample_t, path = "sample_img.png")
+```
+
+```{r}
+sample_t
 ```
 
 ```{r}
@@ -136,11 +178,10 @@ Summary %>% set_header_labels(rowname = "Data Types", High_Severity = "High Seve
 ```
 
 
-
 Note:
 
 Census Inc: 2019
 Obesity: 2019 Crude Percentage
 Doctor: 2018 Percentage of Doctor Coverage
-High School: Percentage of High School Diploma Minimum in 2018-2022.
+High School: Percentage of High School Diploma Minimum in 2013-2017.
 FastFood: 2019 Percentage
